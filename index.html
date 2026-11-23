@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>National ID Registration & Verification System</title>
+  <link rel="stylesheet" href="style.css?v=16" />
+  <style>
+    body.dark-mode #idCardFront, body.dark-mode #idCardBack, #idCardFront, #idCardBack { color: #0f172a !important; }
+    body.dark-mode .id-details strong, body.dark-mode .id-details p, body.dark-mode .back-dates strong, body.dark-mode .legal-notice, body.dark-mode .mrz-code { color: #0f172a !important; }
+    body.dark-mode .id-details small, body.dark-mode .back-dates small, body.dark-mode .sig-label { color: #475569 !important; }
+  </style>
+</head>
+<body>
+
+  <!-- ADMIN LOGIN OVERLAY -->
+  <div id="loginScreen" class="login-overlay" style="display: none;">
+    <form id="loginForm" class="login-card" autocomplete="off" onsubmit="event.preventDefault(); handleOfficerLogin();">
+      <div class="emblem center-emblem">ID</div>
+      <h2>ADMIN LOGIN PORTAL</h2>
+      <p class="login-sub">Authorized System Administrator Only</p>
+      <div class="form-group">
+        <label>Admin Username</label>
+        <div class="pass-wrap">
+          <input type="password" id="loginUser" autocomplete="off" required />
+          <button type="button" class="btn-eye" onclick="toggleSecret('loginUser', this)">👁</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="loginPass" autocomplete="new-password" required />
+          <button type="button" class="btn-eye" onclick="toggleSecret('loginPass', this)">👁</button>
+        </div>
+      </div>
+      <p id="loginError" class="login-error">Invalid Username or Password!</p>
+      <button type="button" class="btn-primary" onclick="handleOfficerLogin()">LOGIN AS ADMIN</button>
+      <button type="button" class="btn-secondary" style="width: 100%; margin-top: 8px;" onclick="closeAdminLogin()">← Back to Citizen Form</button>
+    </form>
+  </div>
+
+  <!-- MAIN APPLICATION -->
+  <div id="mainApp" style="display: block;">
+    <header class="topbar">
+      <div class="brand">
+        <div class="emblem">ID</div>
+        <div>
+          <h1>NATIONAL ID REGISTRATION SYSTEM</h1>
+          <p>Citizen Self-Enrollment &amp; Digital ID Portal (18+)</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <button type="button" class="btn-top-outline" id="darkModeBtn" onclick="toggleDarkMode()">🩵 Blue Theme</button>
+        <button type="button" class="btn-top-outline" id="openAdminLoginBtn" style="background: #facc15; color: #064e3b; border: none;" onclick="openAdminLogin()">🔐 Admin Login</button>
+        <button type="button" class="btn-top-outline admin-only" onclick="exportExcelCSV()">📊 Export Excel (CSV)</button>
+        <button type="button" class="btn-top-outline admin-only" onclick="exportDatabase()">⬇ Export DB</button>
+        <button type="button" class="btn-top-outline admin-only" onclick="document.getElementById('importDbInput').click()">⬆ Import DB</button>
+        <input type="file" id="importDbInput" accept=".json" style="display: none;" onchange="importDatabase(event)" />
+        <button type="button" class="btn-top-outline admin-only" onclick="changeAdminCredentials()">🔑 Change Login</button>
+        <button type="button" class="btn-logout admin-only" onclick="logoutOfficer()">Logout Admin</button>
+      </div>
+    </header>
+
+    <!-- ANALYTICS BAR (ADMIN ONLY) -->
+    <section class="analytics-bar admin-only">
+      <div class="stat-box"><span>Total Citizens Registered</span><strong id="statTotal">0</strong></div>
+      <div class="stat-box blue"><span>Male Citizens (M)</span><strong id="statMale">0</strong></div>
+      <div class="stat-box amber"><span>Female Citizens (F)</span><strong id="statFemale">0</strong></div>
+      <div class="stat-box purple"><span>Top Registered Region</span><strong id="statTopRegion">None</strong></div>
+    </section>
+
+    <!-- NAVIGATION TABS (ADMIN ONLY) -->
+    <nav class="tabs admin-only">
+      <button type="button" class="tab-btn active" onclick="switchTab('registerTab', this)">1. Register / Edit Citizen</button>
+      <button type="button" class="tab-btn" onclick="switchTab('verifyTab', this)">2. Verify NIN &amp; Scan QR</button>
+      <button type="button" class="tab-btn" onclick="switchTab('recordsTab', this)">3. Citizen Database</button>
+    </nav>
+
+    <main class="container">
+      <section id="registerTab" class="tab-content active">
+        <div class="grid-2">
+          <form id="regForm" class="card">
+            <div class="form-head-row">
+              <h2 id="formTitle">Citizen National ID Application Form (18+ Eligible)</h2>
+              <button type="button" id="cancelEditBtn" class="btn-cancel-edit" style="display: none;" onclick="cancelEditMode()">Cancel Edit</button>
+            </div>
+
+            <!-- 1. FULL NAME & NATIONALITY -->
+            <div class="row">
+              <div class="form-group"><label>Full Name (Three Names) *</label><input type="text" id="fullName" required /></div>
+              <div class="form-group">
+                <label>Nationality (Taifa) *</label>
+                <select id="nationality" required>
+                  <option value="" disabled selected></option>
+                  <option value="Tanzanian">Tanzanian</option>
+                  <option value="Foreigner">Foreigner</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 2. DOB & GENDER -->
+            <div class="row">
+              <div class="form-group"><label>Date of Birth (18 Years &amp; Above) *</label><input type="date" id="dob" required /></div>
+              <div class="form-group">
+                <label>Gender *</label>
+                <select id="gender" required>
+                  <option value="" disabled selected></option>
+                  <option value="M">Male (M)</option>
+                  <option value="F">Female (F)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 3. PLACE OF BIRTH & MARITAL STATUS -->
+            <div class="row">
+              <div class="form-group"><label>Place of Birth (Mahali Alipozaliwa) *</label><input type="text" id="placeOfBirth" required /></div>
+              <div class="form-group">
+                <label>Marital Status (Hali ya Ndoa) *</label>
+                <select id="maritalStatus" required>
+                  <option value="" disabled selected></option>
+                  <option value="Single">Single</option>
+                  <option value="Married">Married</option>
+                  <option value="Divorced">Divorced</option>
+                  <option value="Widowed">Widowed</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 4. PHONE & EMAIL -->
+            <div class="row">
+              <div class="form-group"><label>Phone Number (Namba ya Simu) *</label><input type="tel" id="phoneNumber" required /></div>
+              <div class="form-group"><label>Email Address (Barua Pepe)</label><input type="email" id="emailAddress" /></div>
+            </div>
+
+            <!-- 5. FATHER & MOTHER -->
+            <div class="row">
+              <div class="form-group"><label>Father's Full Name (Majina ya Baba) *</label><input type="text" id="fatherName" required /></div>
+              <div class="form-group"><label>Mother's Full Name (Majina ya Mama) *</label><input type="text" id="motherName" required /></div>
+            </div>
+
+            <!-- 6. BIRTH CERT & GUARDIAN NIN -->
+            <div class="row">
+              <div class="form-group"><label>Birth Certificate No. (Namba ya Cheti)</label><input type="text" id="birthCertNo" /></div>
+              <div class="form-group"><label>Parent / Guardian NIN (Kama hana cheti)</label><input type="text" id="guardianNin" /></div>
+            </div>
+
+            <div class="form-group">
+              <label>Upload Birth Certificate (Pakia Cheti cha Kuzaliwa - PDF/Image)</label>
+              <input type="file" id="birthCertFile" accept="image/*,.pdf" />
+            </div>
+
+            <!-- 7. ADDRESS -->
+            <div class="row">
+              <div class="form-group"><label>Region of Residence (Mkoa - All 31) *</label><select id="region" required></select></div>
+              <div class="form-group"><label>District (Wilaya) *</label><input type="text" id="district" required /></div>
+            </div>
+
+            <div class="row">
+              <div class="form-group"><label>Street / Village (Mtaa / Kijiji) *</label><input type="text" id="streetVillage" required /></div>
+              <div class="form-group"><label>House Number (Namba ya Nyumba) *</label><input type="text" id="houseNumber" required /></div>
+            </div>
+
+            <!-- 8. OCCUPATION & BARUA YA MTENDAJI -->
+            <div class="row">
+              <div class="form-group"><label>Occupation / Kazi Yako *</label><input type="text" id="occupation" required /></div>
+              <div class="form-group"><label>Barua ya Mtendaji wa Mtaa/Kijiji (Upload PDF/Image) *</label><input type="file" id="executiveLetterFile" accept="image/*,.pdf" required /></div>
+            </div>
+
+            <!-- 9. PASSPORT PHOTO (UPLOAD + FRONT/BACK CAMERA CHOICE) -->
+            <div class="form-group">
+              <label id="photoLabel">Applicant Passport Photo (Upload or Live Camera *)</label>
+              <div class="cam-controls" style="flex-wrap: wrap;">
+                <input type="file" id="photoInput" accept="image/*" />
+                <select id="photoCamFacing" style="max-width: 165px; padding: 7px;">
+                  <option value="user">🤳 Front Camera</option>
+                  <option value="environment">📷 Back Camera</option>
+                </select>
+                <button type="button" class="btn-cam" id="openCamBtn" onclick="toggleWebcam()">📷 Open Camera</button>
+              </div>
+              <div id="webcamBox" class="webcam-box" style="display: none;">
+                <video id="webcamVideo" autoplay playsinline></video>
+                <button type="button" class="btn-capture" onclick="captureWebcamPhoto()">📸 Capture Photo</button>
+              </div>
+            </div>
+
+            <!-- 10. FINGERPRINT SCAN (LIVE FRONT/BACK CAMERA ONLY) -->
+            <div class="form-group">
+              <label id="fpLabel">Biometric Fingerprint Scan (Live Camera Only *)</label>
+              <div class="fingerprint-box" id="fingerprintBox" style="flex-wrap: wrap;">
+                <div class="fp-icon" id="fpIcon">☝️</div>
+                <div style="flex: 1; min-width: 150px;">
+                  <strong id="fpStatusText" style="font-size: 13px;">Fingerprint Not Captured Yet</strong><br>
+                  <small id="fpSubText" style="color: #64748b;">Choose Front or Back camera and capture thumbprint</small>
+                </div>
+                <img id="fpPreviewImg" style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid #10b981; display: none;" alt="Fingerprint" />
+                <select id="fpCamFacing" style="max-width: 160px; padding: 7px;">
+                  <option value="environment">📷 Back Camera</option>
+                  <option value="user">🤳 Front Camera</option>
+                </select>
+                <button type="button" class="btn-cam" id="openFpCamBtn" onclick="toggleFpWebcam()">📷 Open Camera</button>
+              </div>
+              <div id="fpWebcamBox" class="webcam-box" style="display: none; margin-top: 8px;">
+                <video id="fpWebcamVideo" autoplay playsinline></video>
+                <p style="color: #fde047; font-size: 12px; margin: 6px 0;">Place your thumb steady in front of the camera lens...</p>
+                <button type="button" class="btn-capture" onclick="captureFpPhoto()">📸 Capture Fingerprint</button>
+              </div>
+            </div>
+
+            <!-- 11. DIGITAL SIGNATURE -->
+            <div class="form-group">
+              <div class="sig-header">
+                <label id="sigLabel">Applicant Digital Signature (Sign inside the box *)</label>
+                <button type="button" class="btn-clear-sig" onclick="clearSignature()">Clear Signature</button>
+              </div>
+              <canvas id="sigPad" width="360" height="80" class="sig-pad"></canvas>
+            </div>
+
+            <!-- 12. TIKI YA KUTHIBITISHA TAARIFA -->
+            <div class="form-group" style="background: #fef9c3; border: 1px solid #eab308; padding: 10px 12px; border-radius: 8px;">
+              <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0; color: #713f12; font-size: 13px; line-height: 1.4;">
+                <input type="checkbox" id="confirmTruthCheckbox" style="width: 18px; height: 18px; margin-top: 2px; accent-color: #047857;" required />
+                <span><strong>UTHIBITISHO WA MWOMBAJI:</strong> Ninathibitisha kuwa taarifa zote nilizojaza na nyaraka nilizopakia ni sahihi na za kweli. Ninafahamu kuwa kutoa taarifa za uongo ni kosa la kisheria. *</span>
+              </label>
+            </div>
+
+            <button type="button" id="submitFormBtn" class="btn-primary">SUBMIT APPLICATION</button>
+          </form>
+
+          <!-- DIGITAL ID CARD PREVIEW (ADMIN ONLY) -->
+          <div class="card preview-panel admin-only">
+            <div class="card-top-row">
+              <h2>Digital National ID Preview</h2>
+              <button type="button" class="btn-flip" onclick="flipIdCard()">🔄 Flip Card (Front / Back)</button>
+            </div>
+            <div id="idCardFront" class="id-card">
+              <div class="id-header"><span>UNITED REPUBLIC OF TANZANIA</span><small>NATIONAL IDENTIFICATION CARD (PROTOTYPE)</small></div>
+              <div class="id-body">
+                <div class="photo-col">
+                  <img id="cardPhoto" src="https://placeholder.com" alt="Photo" />
+                  <img id="cardSigImg" class="card-sig" alt="Signature" style="display: none;" />
+                  <small class="sig-label">HOLDER'S SIGNATURE</small>
+                </div>
+                <div class="id-details">
+                  <p><small>FULL NAME:</small><br><strong id="cardName">--- --- ---</strong></p>
+                  <p><small>DATE OF BIRTH:</small> <strong id="cardDob">--/--/----</strong> &nbsp; <small>SEX:</small> <strong id="cardGender">-</strong></p>
+                  <p><small>RESIDENCE:</small> <strong id="cardLocation">---</strong></p>
+                  <p><small>NATIONAL IDENTIFICATION NUMBER (NIN):</small><br><span class="nin-badge" id="cardNin">00000000-00000-00000-00</span></p>
+                </div>
+                <canvas id="qrCanvas" width="80" height="80"></canvas>
+              </div>
+            </div>
+            <div id="idCardBack" class="id-card id-back" style="display: none;">
+              <div class="mag-stripe"></div>
+              <div class="back-content">
+                <div class="back-dates">
+                  <div><small>DATE OF ISSUE:</small><br><strong id="cardIssueDate">--/--/----</strong></div>
+                  <div><small>DATE OF EXPIRY:</small><br><strong id="cardExpiryDate">--/--/----</strong></div>
+                  <div><small>CARD SERIAL:</small><br><strong id="cardSerial">TZ-000000</strong></div>
+                </div>
+                <p class="legal-notice"><b>NOTICE:</b> This identification card is the property of the Issuing Authority (Prototype System). If found, please return to the nearest Registration Office or Police Station.</p>
+                <div class="back-footer"><div class="authority-stamp">VERIFIED &amp; ISSUED ✔</div><div class="mrz-code" id="cardMrz">IDTZ&lt;00000000000000000000&lt;&lt;&lt;&lt;&lt;&lt;</div></div>
+              </div>
+            </div>
+            <div class="card-action-btns">
+              <button type="button" id="downloadBtn" class="btn-download" onclick="downloadIdPng()" disabled>⬇ Download ID (PNG)</button>
+              <button type="button" id="printBtn" class="btn-secondary" onclick="window.print()" disabled>🖨 Print ID Card</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: VERIFY NIN -->
+      <section id="verifyTab" class="tab-content">
+        <div class="card verify-box">
+          <h2>Verify Citizen Identity (Type NIN)</h2>
+          <div class="search-bar">
+            <input type="text" id="searchNinInput" placeholder="Enter 20-digit NIN" />
+            <button type="button" class="btn-primary" onclick="verifyCitizen()">VERIFY NOW</button>
+          </div>
+          <div id="verifyResult" class="verify-result"></div>
+        </div>
+      </section>
+
+      <!-- TAB 3: CITIZEN DATABASE & RECYCLE BIN -->
+      <section id="recordsTab" class="tab-content">
+        <div class="card">
+          <div class="table-header">
+            <h2>Registered Citizens Directory</h2>
+            <button type="button" class="btn-flip" onclick="switchTab('registerTab', document.querySelectorAll('.tab-btn'))">← Back to Form</button>
+            <button type="button" class="btn-danger" onclick="clearAllRecords()">Clear All Records</button>
+          </div>
+          <div class="filter-bar">
+            <input type="text" id="dbSearchInput" placeholder="Search by Full Name or NIN..." onkeyup="renderCitizensTable()" />
+            <select id="dbRegionFilter" onchange="renderCitizensTable()"></select>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead><tr><th>NIN Number</th><th>Full Name</th><th>DOB</th><th>Gender</th><th>Region / District</th><th>Actions</th></tr></thead>
+              <tbody id="recordsTableBody"></tbody>
+            </table>
+          </div>
+          <div class="trash-section">
+            <div class="table-header" style="margin-top: 28px; border-top: 2px dashed #cbd5e1; padding-top: 16px;">
+              <h2 style="margin: 0; border: none; padding: 0; color: #b45309;">🗑 Recycle Bin (<span id="trashCount">0</span>)</h2>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn-sm btn-view" style="padding: 7px 12px;" onclick="restoreAllDeleted()">↩ Restore All</button>
+                <button type="button" class="btn-danger" style="padding: 7px 12px; font-size: 12px;" onclick="emptyTrashBin()">Empty Trash</button>
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead><tr><th>NIN Number</th><th>Full Name</th><th>Region / District</th><th>Deleted At</th><th>Action</th></tr></thead>
+                <tbody id="trashTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://jsdelivr.net"></script>
+  <script>
+    (function () {
+   const FB_URL = "https://firebaseio.com";
+      const TZ_REGIONS = ["Arusha","Dar es Salaam","Dodoma","Geita","Iringa","Kagera","Katavi","Kigoma","Kilimanjaro","Lindi","Manyara","Mara","Mbeya","Mjini Magharibi","Morogoro","Mtwara","Mwanza","Njombe","Pemba Kaskazini","Pemba Kusini","Pwani","Rukwa","Ruvuma","Shinyanga","Simiyu","Singida","Songwe","Tabora","Tanga","Unguja Kaskazini","Unguja Kusini"];
+      let citizensList = JSON.parse(localStorage.getItem("nida_prototype_records")) || [];
+      let trashList = JSON.parse(localStorage.getItem("nida_deleted_records")) || [];
+      let uploadedPhotoData = "", hasSigned = false, pendingReviewIdx = -1, editingCitizenIdx = -1, showingBack = false, activeCardPerson = null, camStream1 = null, camStream2 = null;
+
+      // 1. Regions
+      const regSel = document.getElementById("region"), dbRegFilter = document.getElementById("dbRegionFilter");
+      regSel.innerHTML = '<option value="" disabled selected></option>' + TZ_REGIONS.map(r => `<option value="${r}">${r}</option>`).join("");
+      dbRegFilter.innerHTML = '<option value="ALL">All Regions (31)</option>' + TZ_REGIONS.map(r => `<option value="${r}">${r}</option>`).join("");
+
+      // 2. Theme & Auth
+      window.toggleDarkMode = function () {
+        document.body.classList.toggle("dark-mode");
+        const isD = document.body.classList.contains("dark-mode");
+        localStorage.setItem("nida_dark_mode", isD ? "true" : "false");
+        document.getElementById("darkModeBtn").textContent = isD ? "☀️ Default Theme" : "🩵 Blue Theme";
+      };
+      if (localStorage.getItem("nida_dark_mode") === "true") { document.body.classList.add("dark-mode"); document.getElementById("darkModeBtn").textContent = "☀️ Default Theme"; }
+      window.openAdminLogin = () => { document.getElementById("loginScreen").style.display = "flex"; };
+      window.closeAdminLogin = () => { document.getElementById("loginScreen").style.display = "none"; };
+      window.toggleSecret = (id, btn) => { const f = document.getElementById(id); f.type = f.type === "password" ? "text" : "password"; btn.textContent = f.type === "password" ? "👁" : "🙈"; };
+      window.changeAdminCredentials = function () {
+        const cur = prompt("Enter CURRENT Admin Password:");
+        if (cur !== (localStorage.getItem("nida_admin_pass") || "six@bml")) return alert("Incorrect current password!");
+        const newU = prompt("Enter NEW Admin Username:", localStorage.getItem("nida_admin_user") || "@mahenge");
+        const newP = prompt("Enter NEW Admin Password (min 4 chars):");
+        if (newU && newP && newP.length >= 4) { localStorage.setItem("nida_admin_user", newU.trim()); localStorage.setItem("nida_admin_pass", newP.trim()); alert("Admin Login Updated!"); }
+      };
+      window.handleOfficerLogin = function () {
+        const u = document.getElementById("loginUser").value.trim().toLowerCase(), p = document.getElementById("loginPass").value.trim();
+        if (u === (localStorage.getItem("nida_admin_user") || "@mahenge").toLowerCase() && p === (localStorage.getItem("nida_admin_pass") || "six@bml")) {
+          sessionStorage.setItem("officer_logged_in", "true"); document.getElementById("loginForm").reset(); document.getElementById("loginScreen").style.display = "none";
+          document.body.classList.add("is-admin"); document.getElementById("submitFormBtn").textContent = "REGISTER & GENERATE NIN"; fastSyncLoad();
+        } else { document.getElementById("loginError").style.display = "block"; alert("Invalid Username or Password!"); }
+      };
+      window.logoutOfficer = function () { sessionStorage.removeItem("officer_logged_in"); document.body.classList.remove("is-admin"); pendingReviewIdx = -1; editingCitizenIdx = -1; document.getElementById("submitFormBtn").textContent = "SUBMIT APPLICATION"; renderAdminInbox(); };
+      if (sessionStorage.getItem("officer_logged_in") === "true") { document.body.classList.add("is-admin"); document.getElementById("submitFormBtn").textContent = "REGISTER & GENERATE NIN"; }
+
+      // 3. Tabs
+      window.switchTab = function (tabId, btn) {
+        document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+        document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+        document.getElementById(tabId).classList.add("active"); if (btn) btn.classList.add("active");
+        if (tabId === "recordsTab") { renderCitizensTable(); renderTrashTable(); }
+      };
+
+      // 4. Front & Back Camera Support + Compression
+      function compressImg(src) {
+        return new Promise(res => {
+          const img = new Image();
+          img.onload = () => { const c = document.createElement("canvas"); c.width = 220; c.height = 260; c.getContext("2d").drawImage(img, 0, 0, 220, 260); res(c.toDataURL("image/jpeg", 0.65)); };
+          img.onerror = () => res(src); img.src = src;
+        });
+      }
+      async function startCameraWithFacing(facingMode) {
+        try { return await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facingMode } } }); }
+        catch (e) { return await navigator.mediaDevices.getUserMedia({ video: true }); }
+      }
+      window.toggleWebcam = async function () {
+        const box = document.getElementById("webcamBox"), video = document.getElementById("webcamVideo"), btn = document.getElementById("openCamBtn");
+        if (camStream1) { camStream1.getTracks().forEach(t => t.stop()); camStream1 = null; box.style.display = "none"; btn.textContent = "📷 Open Camera"; return; }
+        if (camStream2) await window.toggleFpWebcam();
+        try {
+          const mode = document.getElementById("photoCamFacing").value;
+          camStream1 = await startCameraWithFacing(mode);
+          video.srcObject = camStream1; box.style.display = "block"; btn.textContent = "✖ Close Camera";
+        } catch (e) { alert("Camera blocked! Open link in normal browser tab and allow Camera."); }
+      };
+      window.captureWebcamPhoto = function () {
+        const video = document.getElementById("webcamVideo"); if (!video.videoWidth) return;
+        const c = document.createElement("canvas"); c.width = 220; c.height = 260; c.getContext("2d").drawImage(video, 0, 0, 220, 260);
+        uploadedPhotoData = c.toDataURL("image/jpeg", 0.65); document.getElementById("cardPhoto").src = uploadedPhotoData;
+        document.getElementById("photoLabel").textContent = "✔ Passport Photo Captured!"; window.toggleWebcam();
+      };
+      document.getElementById("photoInput").onchange = function (e) {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader(); r.onload = async ev => { uploadedPhotoData = await compressImg(ev.target.result); document.getElementById("cardPhoto").src = uploadedPhotoData; document.getElementById("photoLabel").textContent = "✔ Passport Photo Ready!"; }; r.readAsDataURL(f);
+      };
+
+      window.toggleFpWebcam = async function () {
+        const box = document.getElementById("fpWebcamBox"), video = document.getElementById("fpWebcamVideo"), btn = document.getElementById("openFpCamBtn");
+        if (camStream2) { camStream2.getTracks().forEach(t => t.stop()); camStream2 = null; box.style.display = "none"; btn.textContent = "📷 Open Camera"; return; }
+        if (camStream1) await window.toggleWebcam();
+        try {
+          const mode = document.getElementById("fpCamFacing").value;
+          camStream2 = await startCameraWithFacing(mode);
+          video.srcObject = camStream2; box.style.display = "block"; btn.textContent = "✖ Close Camera";
+        } catch (e) { alert("Fingerprint camera blocked! Allow Camera permission."); }
+      };
+      window.captureFpPhoto = function () {
+        const video = document.getElementById("fpWebcamVideo"); if (!video.videoWidth) return;
+        const c = document.createElement("canvas"); c.width = 200; c.height = 200; c.getContext("2d").drawImage(video, 0, 0, 200, 200);
+        document.getElementById("fingerprintBox").classList.add("scanned"); document.getElementById("fpIcon").textContent = "✔";
+        document.getElementById("fpStatusText").textContent = `Fingerprint Captured (FP-TZ-${Math.floor(100000 + Math.random() * 900000)})`;
+        const prev = document.getElementById("fpPreviewImg"); prev.src = c.toDataURL("image/jpeg", 0.65); prev.style.display = "block";
+        window.toggleFpWebcam();
+      };
+
+      // Signature Pad
+      const sigPad = document.getElementById("sigPad"), sCtx = sigPad.getContext("2d");
+      sCtx.strokeStyle = "#0f172a"; sCtx.lineWidth = 2.4; sCtx.lineCap = "round"; let drawing = false;
+      const getPos = e => { const r = sigPad.getBoundingClientRect(), cx = e.touches ? e.touches[0].clientX : e.clientX, cy = e.touches ? e.touches[0].clientY : e.clientY; return { x: (cx - r.left) * (sigPad.width / r.width), y: (cy - r.top) * (sigPad.height / r.height) }; };
+      sigPad.addEventListener("mousedown", e => { drawing = true; hasSigned = true; const p = getPos(e); sCtx.beginPath(); sCtx.moveTo(p.x, p.y); });
+      sigPad.addEventListener("mousemove", e => { if (!drawing) return; const p = getPos(e); sCtx.lineTo(p.x, p.y); sCtx.stroke(); });
+      window.addEventListener("mouseup", () => { drawing = false; });
+      sigPad.addEventListener("touchstart", e => { drawing = true; hasSigned = true; const p = getPos(e); sCtx.beginPath(); sCtx.moveTo(p.x, p.y); }, { passive: false });
+      sigPad.addEventListener("touchmove", e => { if (!drawing) return; e.preventDefault(); const p = getPos(e); sCtx.lineTo(p.x, p.y); sCtx.stroke(); }, { passive: false });
+      sigPad.addEventListener("touchend", () => { drawing = false; });
+      window.clearSignature = () => { sCtx.clearRect(0, 0, sigPad.width, sigPad.height); hasSigned = false; };
+
+      // 5. 3-Step Form
+      const formEl = document.getElementById("regForm"), headRow = formEl.querySelector(".form-head-row"), submitBtn = document.getElementById("submitFormBtn");
+      const stepNav = document.createElement("div"); stepNav.className = "step-nav";
+      stepNav.innerHTML = `<button type="button" class="step-pill active" data-step="1">1. Personal Info</button><button type="button" class="step-pill" data-step="2">2. Parents &amp; Address</button><button type="button" class="step-pill" data-step="3">3. Biometrics &amp; Submit</button>`;
+      headRow.insertAdjacentElement("afterend", stepNav);
+      const blocks = Array.from(formEl.children).filter(el => el !== headRow && el !== stepNav && el !== submitBtn);
+      const s1 = blocks.slice(0, 4), s2 = blocks.slice(4, 10), s3 = blocks.slice(10);
+      const navBtns = document.createElement("div"); navBtns.className = "step-actions";
+      navBtns.innerHTML = `<button type="button" id="prevStepBtn" class="btn-secondary" style="flex:1;">← Previous</button><button type="button" id="nextStepBtn" class="btn-primary" style="flex:1; margin-top:0;">Next Step →</button>`;
+      formEl.insertBefore(navBtns, submitBtn);
+      let curStep = 1;
+      function showStep(st) {
+        curStep = st; s1.forEach(e => e.style.display = st === 1 ? "" : "none"); s2.forEach(e => e.style.display = st === 2 ? "" : "none"); s3.forEach(e => e.style.display = st === 3 ? "" : "none");
+        stepNav.querySelectorAll(".step-pill").forEach(b => b.classList.toggle("active", Number(b.dataset.step) === st));
+        document.getElementById("prevStepBtn").style.display = st === 1 ? "none" : "inline-block";
+        document.getElementById("nextStepBtn").style.display = st === 3 ? "none" : "inline-block";
+        submitBtn.style.display = st === 3 ? "block" : "none";
+      }
+      document.getElementById("nextStepBtn").onclick = () => {
+        for (const b of (curStep === 1 ? s1 : s2)) for (const inp of b.querySelectorAll("input[required], select[required]")) if (!inp.checkValidity()) { inp.reportValidity(); return; }
+        showStep(curStep + 1);
+      };
+      document.getElementById("prevStepBtn").onclick = () => { if (curStep > 1) showStep(curStep - 1); };
+      stepNav.querySelectorAll(".step-pill").forEach(p => p.onclick = () => showStep(Number(p.dataset.step)));
+      showStep(1);
+
+      // 6. Firebase Sync, Inbox, Edit, Export & Wipe Form
+      const inboxBox = document.createElement("div");
+      inboxBox.style.cssText = "background:#fef3c7; border:2px solid #f59e0b; border-radius:10px; padding:12px 14px; margin-bottom:16px; color:#78350f; display:none;";
+      formEl.insertBefore(inboxBox, formEl.firstChild);
+
+      async function saveCloud(list) {
+        citizensList = list; localStorage.setItem("nida_prototype_records", JSON.stringify(list));
+        try { await fetch(`${FB_URL}/citizens.json`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(list) }); } catch (e) {}
+      }
+      async function fastSyncLoad() {
+        try {
+          const res = await fetch(`${FB_URL}/citizens.json?t=${Date.now()}`), data = await res.json();
+          if (data && typeof data === "object") {
+            citizensList = Array.isArray(data) ? data.filter(Boolean) : Object.values(data).filter(Boolean);
+            localStorage.setItem("nida_prototype_records", JSON.stringify(citizensList));
+          }
+        } catch (e) {}
+        renderAdminInbox(); renderCitizensTable(); updateStats();
+      }
+      function renderAdminInbox() {
+        if (sessionStorage.getItem("officer_logged_in") !== "true") { inboxBox.style.display = "none"; return; }
+        inboxBox.style.display = "block";
+        const pend = citizensList.map((c, idx) => ({ c, idx })).filter(x => x.c.nin === "PENDING-APPROVAL");
+        inboxBox.innerHTML = pend.length === 0
+          ? `<strong>📩 Pending Citizen Applications (0):</strong> No new applications waiting.`
+          : `<strong>📩 Pending Citizen Applications (${pend.length}):</strong><div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">` +
+            pend.map(({ c, idx }) => `<div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:8px 10px; border-radius:6px; border:1px solid #fcd34d;"><div><strong style="color:#0f172a;">${c.fullName}</strong><br><small style="color:#475569;">${c.district}, ${c.region}</small></div><button type="button" class="btn-sm" style="background:#0284c7;color:#fff;padding:7px 12px;" onclick="loadCitizenToForm(${idx}, false)">📋 Open &amp; Generate NIN</button></div>`).join("") + `</div>`;
+      }
+      window.loadCitizenToForm = function (idx, isEdit) {
+        const c = citizensList[idx]; if (!c) return;
+        pendingReviewIdx = isEdit ? -1 : idx; editingCitizenIdx = isEdit ? idx : -1;
+        ["fullName","nationality","dob","gender","placeOfBirth","maritalStatus","phoneNumber","emailAddress","fatherName","motherName","birthCertNo","guardianNin","region","district","streetVillage","houseNumber","occupation"].forEach(id => { const el = document.getElementById(id); if (el) el.value = c[id] || ""; });
+        uploadedPhotoData = c.photo || ""; hasSigned = true; document.getElementById("confirmTruthCheckbox").checked = true;
+        document.getElementById("cancelEditBtn").style.display = "inline-block";
+        document.getElementById("formTitle").textContent = isEdit ? `✏️ Editing: ${c.fullName}` : `Reviewing: ${c.fullName}`;
+        submitBtn.textContent = isEdit ? "💾 SAVE EDITED CHANGES" : "✔ APPROVE & GENERATE OFFICIAL NIN";
+        showCardPreview(c); showStep(1);
+      };
+      window.cancelEditMode = function () {
+        pendingReviewIdx = -1; editingCitizenIdx = -1; wipeCitizenForm();
+        document.getElementById("formTitle").textContent = "Citizen National ID Application Form (18+ Eligible)";
+        document.getElementById("cancelEditBtn").style.display = "none";
+        submitBtn.textContent = sessionStorage.getItem("officer_logged_in") === "true" ? "REGISTER & GENERATE NIN" : "SUBMIT APPLICATION";
+      };
+      function wipeCitizenForm() {
+        formEl.reset(); formEl.querySelectorAll("input").forEach(i => { if (i.type === "checkbox") i.checked = false; else i.value = ""; });
+        formEl.querySelectorAll("select").forEach(s => { if (s.id !== "photoCamFacing" && s.id !== "fpCamFacing") s.value = ""; });
+        uploadedPhotoData = ""; clearSignature();
+        document.getElementById("photoLabel").textContent = "Applicant Passport Photo (Upload or Live Camera *)";
+        document.getElementById("fingerprintBox").classList.remove("scanned"); document.getElementById("fpIcon").textContent = "☝️";
+        document.getElementById("fpStatusText").textContent = "Fingerprint Not Captured Yet"; document.getElementById("fpPreviewImg").style.display = "none";
+        showStep(1);
+      }
+      function showCardPreview(p) {
+        activeCardPerson = p;
+        document.getElementById("cardName").textContent = p.fullName; document.getElementById("cardDob").textContent = p.dob;
+        document.getElementById("cardGender").textContent = p.gender; document.getElementById("cardLocation").textContent = `${p.district}, ${p.region}`;
+        document.getElementById("cardNin").textContent = p.nin; document.getElementById("cardIssueDate").textContent = p.issueDate || "2026-11-22";
+        document.getElementById("cardExpiryDate").textContent = p.expiryDate || "2036-11-22"; document.getElementById("cardSerial").textContent = p.serial || "TZ-849201";
+        document.getElementById("cardMrz").textContent = `IDTZ<${(p.nin || "").replace(/-/g, "")}<<<<<`;
+        if (p.photo) document.getElementById("cardPhoto").src = p.photo;
+        if (p.signature) { const s = document.getElementById("cardSigImg"); s.src = p.signature; s.style.display = "block"; }
+        document.getElementById("printBtn").disabled = false; document.getElementById("downloadBtn").disabled = false;
+        if (typeof QRious !== "undefined") new QRious({ element: document.getElementById("qrCanvas"), value: p.nin, size: 80, background: "#fff", foreground: "#0f172a" });
+      }
+      window.flipIdCard = () => { showingBack = !showingBack; document.getElementById("idCardFront").style.display = showingBack ? "none" : "block"; document.getElementById("idCardBack").style.display = showingBack ? "block" : "none"; };
+
+      submitBtn.onclick = async function () {
+        const isAdmin = sessionStorage.getItem("officer_logged_in") === "true", getV = id => (document.getElementById(id)?.value || "").trim();
+        const fullName = getV("fullName").toUpperCase(), dob = getV("dob"), gender = getV("gender"), region = getV("region"), district = getV("district");
+        if (!fullName || !dob || !gender || !region || !district) return alert("Tafadhali jaza Jina, Tarehe ya Kuzaliwa, Jinsia, Mkoa na Wilaya!");
+
+        if (isAdmin && editingCitizenIdx >= 0) {
+          const t = citizensList[editingCitizenIdx];
+          Object.assign(t, { fullName, dob, gender, region, district, nationality: getV("nationality"), placeOfBirth: getV("placeOfBirth"), maritalStatus: getV("maritalStatus"), phoneNumber: getV("phoneNumber"), emailAddress: getV("emailAddress"), fatherName: getV("fatherName").toUpperCase(), motherName: getV("motherName").toUpperCase(), streetVillage: getV("streetVillage"), houseNumber: getV("houseNumber"), occupation: getV("occupation") });
+          if (uploadedPhotoData) t.photo = uploadedPhotoData;
+          showCardPreview(t); renderCitizensTable(); saveCloud(citizensList); alert(`✔ Taarifa za ${t.fullName} zimesasishwa!`); window.cancelEditMode(); return;
+        }
+
+        const nin = `${dob.replace(/-/g, "")}-${Math.floor(10000 + Math.random() * 90000)}-${String(citizensList.length + 1).padStart(5, "0")}-${Math.floor(10 + Math.random() * 89)}`;
+        if (isAdmin && pendingReviewIdx >= 0) {
+          const t = citizensList[pendingReviewIdx]; t.nin = nin; t.status = "APPROVED"; t.fullName = fullName; t.dob = dob; t.gender = gender; t.region = region; t.district = district;
+          pendingReviewIdx = -1; showCardPreview(t); renderAdminInbox(); renderCitizensTable(); updateStats(); saveCloud(citizensList);
+          alert(`✔ NIN IMETENGENEZWA PAPO HAPO!\n${t.fullName}: ${nin}`); return;
+        }
+
+        if (!uploadedPhotoData) return alert("Tafadhali piga au chagua Picha ya Pasipoti kwanza!");
+        if (!hasSigned) return alert("Tafadhali weka Saini ndani ya kisanduku!");
+        if (!document.getElementById("confirmTruthCheckbox").checked) return alert("Tafadhali weka tiki ya kuthibitisha taarifa zako!");
+
+        submitBtn.disabled = true; submitBtn.textContent = "⏳ Inatuma...";
+        const rec = { nin: isAdmin ? nin : "PENDING-APPROVAL", fullName, dob, gender, region, district, nationality: getV("nationality"), placeOfBirth: getV("placeOfBirth"), maritalStatus: getV("maritalStatus"), phoneNumber: getV("phoneNumber"), emailAddress: getV("emailAddress"), fatherName: getV("fatherName").toUpperCase(), motherName: getV("motherName").toUpperCase(), birthCertNo: getV("birthCertNo"), guardianNin: getV("guardianNin"), streetVillage: getV("streetVillage"), houseNumber: getV("houseNumber"), occupation: getV("occupation"), photo: uploadedPhotoData, signature: sigPad.toDataURL("image/png"), issueDate: new Date().toISOString().slice(0, 10), expiryDate: `${new Date().getFullYear() + 10}-${new Date().toISOString().slice(5, 10)}`, serial: "TZ-" + Math.floor(100000 + Math.random() * 900000), status: isAdmin ? "APPROVED" : "PENDING" };
+
+        try { await fetch(`${FB_URL}/citizens.json`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rec) }); } catch (e) {}
+        submitBtn.disabled = false; submitBtn.textContent = isAdmin ? "REGISTER & GENERATE NIN" : "SUBMIT APPLICATION";
+
+        if (isAdmin) { citizensList.push(rec); showCardPreview(rec); renderCitizensTable(); updateStats(); alert(`✔ USAJILI UMEKAMILIKA!\nNIN: ${nin}`); }
+        else { wipeCitizenForm(); localStorage.removeItem("nida_prototype_records"); alert(`✔ MAOMBI YAMETUMWA KWA ADMIN!\nAsante ${fullName}, taarifa zako zimefika salama.`); }
+      };
+
+      // 7. Table, Verify, Export CSV/DB & Recycle Bin
+      window.verifyCitizen = function () {
+        const q = document.getElementById("searchNinInput").value.trim(), box = document.getElementById("verifyResult"), f = citizensList.find(c => c.nin === q);
+        box.className = f ? "verify-result found" : "verify-result not-found";
+        box.innerHTML = f ? `<strong>✔ IDENTITY VERIFIED</strong><br><b>Name:</b> ${f.fullName} | <b>NIN:</b> <code>${f.nin}</code><br><b>DOB:</b> ${f.dob} | <b>Residence:</b> ${f.district}, ${f.region}` : `<strong>✖ RECORD NOT FOUND!</strong>`;
+      };
+      window.renderCitizensTable = function () {
+        const tb = document.getElementById("recordsTableBody"), q = (document.getElementById("dbSearchInput")?.value || "").toLowerCase(), rf = document.getElementById("dbRegionFilter")?.value || "ALL";
+        tb.innerHTML = citizensList.map((c, i) => (q && !c.fullName.toLowerCase().includes(q) && !c.nin.toLowerCase().includes(q)) || (rf !== "ALL" && c.region !== rf) ? "" :
+          `<tr><td><code>${c.nin}</code></td><td><strong>${c.fullName}</strong></td><td>${c.dob}</td><td>${c.gender}</td><td>${c.district}, ${c.region}</td>
+          <td style="display:flex;gap:5px;"><button type="button" class="btn-sm btn-view" onclick="loadCitizenToForm(${i},false);switchTab('registerTab',document.querySelectorAll('.tab-btn'))">${c.nin === "PENDING-APPROVAL" ? "✔ NIN" : "View"}</button>
+          <button type="button" class="btn-sm" style="background:#f59e0b;color:#fff;" onclick="loadCitizenToForm(${i},true);switchTab('registerTab',document.querySelectorAll('.tab-btn'))">✏️ Edit</button>
+          <button type="button" class="btn-sm btn-del" onclick="deleteCitizen(${i})">Delete</button></td></tr>`).join("");
+      };
+      window.deleteCitizen = async i => { const it = citizensList[i]; if (!it || !confirm(`Delete ${it.fullName}?`)) return; it.deletedAt = new Date().toLocaleString(); trashList.unshift(it); citizensList.splice(i, 1); localStorage.setItem("nida_deleted_records", JSON.stringify(trashList)); await saveCloud(citizensList); renderCitizensTable(); renderTrashTable(); renderAdminInbox(); updateStats(); };
+      window.clearAllRecords = async () => { if (citizensList.length && confirm("Move ALL to Recycle Bin?")) { citizensList.forEach(c => { c.deletedAt = new Date().toLocaleString(); trashList.unshift(c); }); localStorage.setItem("nida_deleted_records", JSON.stringify(trashList)); await saveCloud([]); renderCitizensTable(); renderTrashTable(); renderAdminInbox(); updateStats(); } };
+      window.renderTrashTable = () => { document.getElementById("trashCount").textContent = trashList.length; document.getElementById("trashTableBody").innerHTML = trashList.map((c, i) => `<tr><td><code>${c.nin}</code></td><td>${c.fullName}</td><td>${c.district}, ${c.region}</td><td>${c.deletedAt}</td><td><button type="button" class="btn-sm btn-view" onclick="restoreOne(${i})">↩ Restore</button></td></tr>`).join(""); };
+      window.restoreOne = async i => { const it = trashList[i]; delete it.deletedAt; citizensList.push(it); trashList.splice(i, 1); localStorage.setItem("nida_deleted_records", JSON.stringify(trashList)); await saveCloud(citizensList); renderCitizensTable(); renderTrashTable(); renderAdminInbox(); updateStats(); };
+      window.restoreAllDeleted = async () => { trashList.forEach(it => { delete it.deletedAt; citizensList.push(it); }); trashList = []; localStorage.setItem("nida_deleted_records", "[]"); await saveCloud(citizensList); renderCitizensTable(); renderTrashTable(); renderAdminInbox(); updateStats(); };
+      window.emptyTrashBin = () => { if (confirm("Empty Trash?")) { trashList = []; localStorage.setItem("nida_deleted_records", "[]"); renderTrashTable(); } };
+
+      window.exportExcelCSV = () => {
+        if (!citizensList.length) return alert("Database iko tupu!");
+        const rows = ["NIN,Full Name,DOB,Gender,Region,District,Phone,Occupation"].concat(citizensList.map(c => `"${c.nin}","${c.fullName}","${c.dob}","${c.gender}","${c.region}","${c.district}","${c.phoneNumber || ""}","${c.occupation || ""}"`));
+        const a = document.createElement("a"); a.href = "data:text/csv;charset=utf-8," + encodeURI(rows.join("\n")); a.download = "Citizens_NIDA_Records.csv"; a.click();
+      };
+      window.exportDatabase = () => {
+        if (!citizensList.length) return alert("Database iko tupu!");
+        const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(citizensList, null, 2)], { type: "application/json" })); a.download = "NIDA_Database_Backup.json"; a.click();
+      };
+      window.importDatabase = ev => {
+        const f = ev.target.files[0]; if (!f) return;
+        const r = new FileReader(); r.onload = async e => { try { const arr = JSON.parse(e.target.result); if (Array.isArray(arr)) { await saveCloud(arr); renderAdminInbox(); renderCitizensTable(); updateStats(); alert("Database Imported!"); } } catch (err) { alert("Invalid JSON file!"); } }; r.readAsText(f);
+      };
+      window.downloadIdPng = () => { window.print(); };
+
+      function updateStats() {
+        const app = citizensList.filter(c => c.nin !== "PENDING-APPROVAL");
+        document.getElementById("statTotal").textContent = app.length;
+        document.getElementById("statMale").textContent = app.filter(c => c.gender === "M").length;
+        document.getElementById("statFemale").textContent = app.filter(c => c.gender === "F").length;
+      }
+
+      fastSyncLoad();
+      setInterval(() => { if (sessionStorage.getItem("officer_logged_in") === "true") fastSyncLoad(); }, 4000);
+            // 8. ADMIN INSTANT REVIEW & ONE-CLICK GENERATE NIN PANEL
+      const reviewPanel = document.createElement("div");
+      reviewPanel.id = "adminReviewCard";
+      reviewPanel.style.cssText = "display:none; background:#fffbeb; border:2px solid #f59e0b; border-radius:10px; padding:14px; margin-bottom:16px; color:#0f172a;";
+      const previewPanel = document.querySelector(".preview-panel");
+      if (previewPanel) previewPanel.insertBefore(reviewPanel, previewPanel.firstChild);
+
+      window.openCitizenForVerification = function (idx) {
+        const c = citizensList[idx];
+        if (!c) return;
+        pendingReviewIdx = idx;
+
+        // Fill form fields & show ID preview
+        if (typeof window.loadCitizenToForm === "function") window.loadCitizenToForm(idx, false);
+        showCardPreview(c);
+
+        // Show full verification summary + One-Click Generate NIN button above ID Card
+        reviewPanel.style.display = "block";
+        reviewPanel.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #fcd34d; padding-bottom:8px; margin-bottom:10px;">
+            <strong style="color:#b45309; font-size:15px;">🔍 HAKIKI TAARIFA ZA MWOMBAJI</strong>
+            <button type="button" onclick="document.getElementById('adminReviewCard').style.display='none'" style="background:none;border:none;font-weight:bold;cursor:pointer;">✖</button>
+          </div>
+          <div style="font-size:12.5px; line-height:1.6; display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <div><b>Jina Kamili:</b> ${c.fullName}</div>
+            <div><b>Tarehe ya Kuzaliwa:</b> ${c.dob} (${c.gender})</div>
+            <div><b>Mahali Alipozaliwa:</b> ${c.placeOfBirth || "-"}</div>
+            <div><b>Hali ya Ndoa:</b> ${c.maritalStatus || "-"}</div>
+            <div><b>Simu:</b> ${c.phoneNumber || "-"}</div>
+            <div><b>Kazi:</b> ${c.occupation || "-"}</div>
+            <div><b>Baba:</b> ${c.fatherName || "-"}</div>
+            <div><b>Mama:</b> ${c.motherName || "-"}</div>
+            <div><b>Cheti / NIN Mzazi:</b> ${c.birthCertNo || c.guardianNin || "-"}</div>
+            <div><b>Makazi:</b> ${c.streetVillage || ""}, ${c.district}, ${c.region}</div>
+          </div>
+          <button type="button" onclick="instantApproveAndGenerateNin(${idx})" style="width:100%; margin-top:12px; padding:12px; background:#047857; color:#fff; border:none; border-radius:8px; font-weight:800; font-size:14px; cursor:pointer;">
+            ⚡ HAKIKI &amp; GENERATE OFFICIAL NIN NOW
+          </button>
+        `;
+      };
+
+      window.instantApproveAndGenerateNin = async function (idx) {
+        const target = citizensList[idx];
+        if (!target) return;
+
+        const cleanDob = (target.dob || "2000-01-01").replace(/-/g, "");
+        const newNin = `${cleanDob}-${Math.floor(10000 + Math.random() * 90000)}-${String(idx + 1).padStart(5, "0")}-${Math.floor(10 + Math.random() * 89)}`;
+
+        target.nin = newNin;
+        target.status = "APPROVED";
+        pendingReviewIdx = -1;
+
+        showCardPreview(target);
+        renderAdminInbox();
+        renderCitizensTable();
+        updateStats();
+        await saveCloud(citizensList);
+
+        reviewPanel.innerHTML = `
+          <div style="background:#ecfdf5; border:1.5px solid #10b981; padding:12px; border-radius:8px; color:#065f46; text-align:center;">
+            <strong>✔ NIN IMETENGENEZWA KIKAMILIFU!</strong><br>
+            <span style="font-size:16px; font-family:monospace; font-weight:900;">${newNin}</span><br>
+            <small>Kadi na QR Code ziko tayari kupakuliwa au kuchapishwa hapo chini.</small>
+          </div>
+        `;
+        alert(`✔ NIN IMETENGENEZWA KWA ${target.fullName}:\n${newNin}`);
+      };
+
+      // Update Inbox buttons to open the new Verification & One-Click NIN Panel
+      const origInboxRender = renderAdminInbox;
+      renderAdminInbox = function () {
+        origInboxRender();
+        inboxBox.querySelectorAll("button").forEach(btn => {
+          const match = (btn.getAttribute("onclick") || "").match(/loadCitizenToForm\((\d+)/);
+          if (match) {
+            const idx = Number(match[1]);
+            btn.setAttribute("onclick", `openCitizenForVerification(${idx})`);
+            btn.textContent = "🔍 Hakiki & Generate NIN";
+          }
+        });
+      };
+      renderAdminInbox();
+      // 9. AUTO-RECEIVE CITIZEN APPLICATIONS FROM FIREBASE & ONE-CLICK GENERATE NIN
+      const adminFormEl = document.getElementById("regForm");
+      let liveInbox = document.getElementById("liveAdminInbox");
+      if (adminFormEl && !liveInbox) {
+        liveInbox = document.createElement("div");
+        liveInbox.id = "liveAdminInbox";
+        liveInbox.style.cssText = "background:#fef3c7; border:2px solid #f59e0b; border-radius:10px; padding:12px 14px; margin-bottom:16px; color:#78350f; display:none;";
+        adminFormEl.insertBefore(liveInbox, adminFormEl.firstChild);
+      }
+
+      const verifyBoxRight = document.createElement("div");
+      verifyBoxRight.id = "verifyRightPanel";
+      verifyBoxRight.style.cssText = "display:none; background:#fffbeb; border:2px solid #f59e0b; border-radius:10px; padding:14px; margin-bottom:16px; color:#0f172a;";
+      const previewCol = document.querySelector(".preview-panel");
+      if (previewCol) previewCol.insertBefore(verifyBoxRight, previewCol.firstChild);
+
+      window.syncAndShowInbox = async function () {
+        try {
+          const res = await fetch(`${FB_URL}/citizens.json?t=${Date.now()}`);
+          const data = await res.json();
+          if (data && typeof data === "object") {
+            citizensList = Array.isArray(data)
+              ? data.filter(Boolean)
+              : Object.entries(data).map(([k, v]) => ({ ...v, _fbKey: k }));
+            localStorage.setItem("nida_prototype_records", JSON.stringify(citizensList));
+          }
+        } catch (e) {}
+
+        const isAdmin = sessionStorage.getItem("officer_logged_in") === "true";
+        if (!liveInbox) return;
+        if (!isAdmin) {
+          liveInbox.style.display = "none";
+          return;
+        }
+
+        liveInbox.style.display = "block";
+        const pendingApps = citizensList
+          .map((c, idx) => ({ c, idx }))
+          .filter(x => x.c && (x.c.nin === "PENDING-APPROVAL" || x.c.status === "PENDING"));
+
+        if (pendingApps.length === 0) {
+          liveInbox.innerHTML = `<strong>📩 Maombi Mapya ya Wananchi (0):</strong> Hakuna maombi mapya yanayosubiri NIN kwa sasa.`;
+        } else {
+          liveInbox.innerHTML = `<strong>📩 Maombi Mapya ya Wananchi (${pendingApps.length} Yanasubiri NIN):</strong>
+            <div style="margin-top:8px; display:flex; flex-direction:column; gap:7px;">
+              ${pendingApps.map(({ c, idx }) => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#ffffff; padding:9px 12px; border-radius:7px; border:1px solid #fcd34d;">
+                  <div>
+                    <strong style="color:#0f172a; font-size:13.5px;">${c.fullName}</strong><br>
+                    <small style="color:#475569;">${c.district || ""}, ${c.region || ""} | Simu: ${c.phoneNumber || "-"}</small>
+                  </div>
+                  <button type="button" onclick="inspectAndApproveCitizen(${idx})" style="background:#047857; color:#ffffff; border:none; padding:8px 13px; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
+                    🔍 Hakiki &amp; Generate NIN
+                  </button>
+                </div>
+              `).join("")}
+            </div>`;
+        }
+        if (typeof renderCitizensTable === "function") renderCitizensTable();
+        if (typeof updateStats === "function") updateStats();
+      };
+
+      window.inspectAndApproveCitizen = function (idx) {
+        const c = citizensList[idx];
+        if (!c) return;
+        pendingReviewIdx = idx;
+
+        // Auto-fill all form inputs so Admin doesn't re-type anything
+        ["fullName","nationality","dob","gender","placeOfBirth","maritalStatus","phoneNumber","emailAddress","fatherName","motherName","birthCertNo","guardianNin","region","district","streetVillage","houseNumber","occupation"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = c[id] || "";
+        });
+
+        uploadedPhotoData = c.photo || "";
+        hasSigned = true;
+        const chk = document.getElementById("confirmTruthCheckbox");
+        if (chk) chk.checked = true;
+
+        showCardPreview(c);
+
+        // Show full citizen details & One-Click Generate NIN button above ID Card
+        verifyBoxRight.style.display = "block";
+        verifyBoxRight.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #fcd34d; padding-bottom:6px; margin-bottom:8px;">
+            <strong style="color:#b45309; font-size:14px;">🔍 TAARIFA ZA MWOMBAJI (TAYARI KWA NIN)</strong>
+            <button type="button" onclick="document.getElementById('verifyRightPanel').style.display='none'" style="background:none;border:none;font-weight:bold;cursor:pointer;">✖</button>
+          </div>
+          <div style="font-size:12.5px; line-height:1.55; display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+            <div><b>Jina Kamili:</b> ${c.fullName}</div>
+            <div><b>Kuzaliwa:</b> ${c.dob} (${c.gender})</div>
+            <div><b>Mahali:</b> ${c.placeOfBirth || "-"}</div>
+            <div><b>Ndoa:</b> ${c.maritalStatus || "-"}</div>
+            <div><b>Simu:</b> ${c.phoneNumber || "-"}</div>
+            <div><b>Kazi:</b> ${c.occupation || "-"}</div>
+            <div><b>Baba:</b> ${c.fatherName || "-"}</div>
+            <div><b>Mama:</b> ${c.motherName || "-"}</div>
+            <div><b>Cheti / NIN Mzazi:</b> ${c.birthCertNo || c.guardianNin || "-"}</div>
+            <div><b>Makazi:</b> ${c.streetVillage || ""}, ${c.district}, ${c.region}</div>
+          </div>
+          <button type="button" onclick="generateNinOneClick(${idx})" style="width:100%; margin-top:12px; padding:12px; background:#047857; color:#ffffff; border:none; border-radius:8px; font-weight:800; font-size:14px; cursor:pointer;">
+            ⚡ HAKIKI &amp; GENERATE OFFICIAL NIN NOW
+          </button>
+        `;
+      };
+
+      window.generateNinOneClick = async function (idx) {
+        const target = citizensList[idx];
+        if (!target) return;
+
+        const cleanDob = (target.dob || "2000-01-01").replace(/-/g, "");
+        const officialNin = `${cleanDob}-${Math.floor(10000 + Math.random() * 90000)}-${String(idx + 1).padStart(5, "0")}-${Math.floor(10 + Math.random() * 89)}`;
+
+        target.nin = officialNin;
+        target.status = "APPROVED";
+        pendingReviewIdx = -1;
+
+        showCardPreview(target);
+        localStorage.setItem("nida_prototype_records", JSON.stringify(citizensList));
+
+        // Update Firebase immediately (supports both POST key and full PUT array)
+        if (target._fbKey) {
+          const cleanCopy = { ...target };
+          delete cleanCopy._fbKey;
+          await fetch(`${FB_URL}/citizens/${target._fbKey}.json`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(cleanCopy)
+          });
+        } else {
+          await fetch(`${FB_URL}/citizens.json`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(citizensList)
+          });
+        }
+
+        verifyBoxRight.innerHTML = `
+          <div style="background:#ecfdf5; border:1.5px solid #10b981; padding:12px; border-radius:8px; color:#065f46; text-align:center;">
+            <strong>✔ NIN IMETENGENEZWA KIKAMILIFU!</strong><br>
+            <span style="font-size:16px; font-family:monospace; font-weight:900;">${officialNin}</span>
+          </div>
+        `;
+
+        await window.syncAndShowInbox();
+        alert(`✔ NIN IMETENGENEZWA KWA ${target.fullName}:\n${officialNin}`);
+      };
+
+      window.syncAndShowInbox();
+      setInterval(() => {
+        if (sessionStorage.getItem("officer_logged_in") === "true") window.syncAndShowInbox();
+      }, 4000);
+      // 11. FIX: KEEP PENDING RECORD IN LOCALSTORAGE + SYNC TO FIREBASE + HIDE DUPLICATE BOX
+      document.querySelectorAll("#regForm > div").forEach((d, idx) => {
+        if (idx > 0 && d.textContent.includes("Pending Citizen Applications")) d.style.display = "none";
+      });
+
+     const exactFbEndpoint = "https://nida-system-sixbeth-default-rtdb.firebaseio.com/citizens.json";
+      const submitCitizenBtn = document.getElementById("submitFormBtn");
+
+      if (submitCitizenBtn) {
+        const previousHandler = submitCitizenBtn.onclick;
+        submitCitizenBtn.onclick = async function () {
+          const isAdmin = sessionStorage.getItem("officer_logged_in") === "true";
+          if (isAdmin) {
+            if (typeof previousHandler === "function") await previousHandler();
+            return;
+          }
+
+          const getV = id => (document.getElementById(id)?.value || "").trim();
+          const fullName = getV("fullName").toUpperCase();
+          const dob = getV("dob");
+          const gender = getV("gender");
+          const region = getV("region");
+          const district = getV("district");
+
+          if (!fullName || !dob || !gender || !region || !district) {
+            return alert("Tafadhali jaza Jina, Tarehe ya Kuzaliwa, Jinsia, Mkoa na Wilaya!");
+          }
+          if (!uploadedPhotoData) return alert("Tafadhali piga au pakia Picha ya Pasipoti kwanza!");
+          if (!hasSigned) return alert("Tafadhali weka Saini ndani ya kisanduku!");
+          if (!document.getElementById("confirmTruthCheckbox").checked) {
+            return alert("Tafadhali weka tiki ya kuthibitisha taarifa zako!");
+          }
+
+          submitCitizenBtn.disabled = true;
+          submitCitizenBtn.textContent = "⏳ Inatuma maombi...";
+
+          const newRecord = {
+            nin: "PENDING-APPROVAL",
+            status: "PENDING",
+            fullName, dob, gender, region, district,
+            nationality: getV("nationality"),
+            placeOfBirth: getV("placeOfBirth"),
+            maritalStatus: getV("maritalStatus"),
+            phoneNumber: getV("phoneNumber"),
+            emailAddress: getV("emailAddress"),
+            fatherName: getV("fatherName").toUpperCase(),
+            motherName: getV("motherName").toUpperCase(),
+            birthCertNo: getV("birthCertNo"),
+            guardianNin: getV("guardianNin"),
+            streetVillage: getV("streetVillage"),
+            houseNumber: getV("houseNumber"),
+            occupation: getV("occupation"),
+            photo: uploadedPhotoData,
+            signature: sigPad.toDataURL("image/png"),
+            issueDate: new Date().toISOString().slice(0, 10),
+            expiryDate: `${new Date().getFullYear() + 10}-${new Date().toISOString().slice(5, 10)}`,
+            serial: "TZ-" + Math.floor(100000 + Math.random() * 900000)
+          };
+
+          // 1. Save immediately in localStorage so Admin on same PC sees it 100%
+          const existingLocal = JSON.parse(localStorage.getItem("nida_prototype_records")) || [];
+          existingLocal.push(newRecord);
+          citizensList = existingLocal;
+          localStorage.setItem("nida_prototype_records", JSON.stringify(citizensList));
+
+          // 2. Send to Firebase Cloud so Admin on ANY device sees it
+          try {
+            const res = await fetch(exactFbEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(newRecord)
+            });
+            if (!res.ok) console.warn("Firebase status:", res.status);
+          } catch (e) {
+            console.warn("Firebase offline:", e);
+          }
+
+          wipeCitizenForm();
+          submitCitizenBtn.disabled = false;
+          submitCitizenBtn.textContent = "SUBMIT APPLICATION";
+          alert(`✔ MAOMBI YAMEWASILISHWA!\nAsante ${fullName}, maombi yako yako tayari kwa Admin kutengeneza NIN.`);
+        };
+      }
+      // 12. STRICT VALIDATION: 3 NAMES, PARENT NAME MATCHING, PHONE, HOUSE & BIRTH CERT LIMITS
+      const phoneInp = document.getElementById("phoneNumber");
+      const houseInp = document.getElementById("houseNumber");
+      const certInp = document.getElementById("birthCertNo");
+
+      // Enforce input character limits while typing
+      if (phoneInp) {
+        phoneInp.maxLength = 10;
+        phoneInp.addEventListener("input", () => { phoneInp.value = phoneInp.value.replace(/\D/g, "").slice(0, 10); });
+      }
+      if (houseInp) {
+        houseInp.maxLength = 10;
+      }
+      if (certInp) {
+        certInp.maxLength = 12;
+        certInp.addEventListener("input", () => { certInp.value = certInp.value.replace(/\D/g, "").slice(0, 12); });
+      }
+
+      function validateCitizenStrictRules() {
+        const getWords = id => (document.getElementById(id)?.value || "").trim().toUpperCase().split(/\s+/).filter(Boolean);
+        const getVal = id => (document.getElementById(id)?.value || "").trim();
+
+        const citizenNames = getWords("fullName");
+        const fatherNames = getWords("fatherName");
+        const motherNames = getWords("motherName");
+        const phone = getVal("phoneNumber");
+        const house = getVal("houseNumber");
+        const cert = getVal("birthCertNo");
+
+        // 1. Check 3 Full Names for Citizen
+        if (citizenNames.length < 3) {
+          alert("❌ KOSA LA JINA:\nTafadhali jaza majina yako yote MATATU (3) kamili (mfano: ABDALLAH JUMA SAID).");
+          document.getElementById("fullName").focus();
+          return false;
+        }
+
+        // 2. Check Phone Number (Exactly 10 digits)
+        if (!/^0\d{9}$/.test(phone)) {
+          alert("❌ KOSA LA NAMBA YA SIMU:\nNamba ya simu lazima ianze na 0 na iwe na tarakimu 10 kamili (mfano: 0712345678).");
+          phoneInp.focus();
+          return false;
+        }
+
+        // 3. Check 3 Full Names for Father & Mother
+        if (fatherNames.length < 3) {
+          alert("❌ KOSA LA JINA LA BABA:\nTafadhali jaza majina yote MATATU (3) ya Baba yako.");
+          document.getElementById("fatherName").focus();
+          return false;
+        }
+        if (motherNames.length < 3) {
+          alert("❌ KOSA LA JINA LA MAMA:\nTafadhali jaza majina yote MATATU (3) ya Mama yako.");
+          document.getElementById("motherName").focus();
+          return false;
+        }
+
+        // 4. Verify Parent Names Match Citizen's Second/Third Name
+        const citizenMiddleOrLast = [citizenNames[1], citizenNames[2]];
+        const fatherFirstName = fatherNames[0];
+        const sharedParentNames = [...fatherNames, ...motherNames];
+
+        const matchesFatherFirst = citizenMiddleOrLast.includes(fatherFirstName);
+        const matchesAnySurname = citizenNames.slice(1).some(n => sharedParentNames.includes(n));
+
+        if (!matchesFatherFirst || !matchesAnySurname) {
+          alert(
+            `❌ MAJINA YA WAZAZI HAYAENDANI NA MAJINA YAKO!\n\n` +
+            `• Majina yako: ${citizenNames.join(" ")}\n` +
+            `• Majina ya Baba: ${fatherNames.join(" ")}\n\n` +
+            `Hakikisha jina la kwanza la Baba (${fatherFirstName}) na jina lako la ukoo (${citizenNames[2]}) vinaendana na majina yako uliyoandika!`
+          );
+          document.getElementById("fatherName").focus();
+          return false;
+        }
+
+        // 5. Check Birth Certificate Limit (if entered, must be 10-12 digits)
+        if (cert && (cert.length < 10 || cert.length > 12)) {
+          alert("❌ KOSA LA NAMBA YA CHETI CHA KUZALIWA:\nNamba ya cheti cha kuzaliwa lazima iwe na tarakimu 10 hadi 12.");
+          certInp.focus();
+          return false;
+        }
+
+        // 6. Check House Number Limit (1-10 chars)
+        if (house.length === 0 || house.length > 10) {
+          alert("❌ KOSA LA NAMBA YA NYUMBA:\nNamba ya nyumba isizidi herufi/tarakimu 10.");
+          houseInp.focus();
+          return false;
+        }
+
+        return true;
+      }
+
+      // Hook validation onto Next Step buttons & Submit button
+      const nextBtnHook = document.getElementById("nextStepBtn");
+      if (nextBtnHook) {
+        nextBtnHook.addEventListener("click", function (e) {
+          if (curStep === 1) {
+            const cWords = (document.getElementById("fullName")?.value || "").trim().split(/\s+/).filter(Boolean);
+            const ph = (document.getElementById("phoneNumber")?.value || "").trim();
+            if (cWords.length < 3) {
+              e.stopImmediatePropagation();
+              alert("❌ Tafadhali jaza majina yako yote MATATU (3) kamili kabla ya kuendelea!");
+              return;
+            }
+            if (!/^0\d{9}$/.test(ph)) {
+              e.stopImmediatePropagation();
+              alert("❌ Namba ya simu lazima iwe na tarakimu 10 kamili (mfano: 0712345678)!");
+              return;
+            }
+          } else if (curStep === 2) {
+            if (!validateCitizenStrictRules()) {
+              e.stopImmediatePropagation();
+              return;
+            }
+          }
+        }, true);
+      }
+
+      const finalSubmitHook = document.getElementById("submitFormBtn");
+      if (finalSubmitHook) {
+        finalSubmitHook.addEventListener("click", function (e) {
+          const isAdmin = sessionStorage.getItem("officer_logged_in") === "true";
+          if (!isAdmin && !validateCitizenStrictRules()) {
+            e.stopImmediatePropagation();
+            return;
+          }
+        }, true);
+      }
+
+    })();
+  </script>
+  <script src="script.js?v=100"></script>
+</body>
+</html>
