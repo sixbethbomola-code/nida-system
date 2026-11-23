@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-   const FB_CITIZENS = "https://firebaseio.com";
+     const FB_CITIZENS = "https://nida-system-sixbeth-default-rtdb.firebaseio.com/citizens";
   const ADMIN_USER = "@mahenge";
   const ADMIN_PASS = "six@bml";
 
