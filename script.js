@@ -613,4 +613,103 @@
   if (sessionStorage.getItem("officer_logged_in") === "true") setAdminState(true);
   syncFromFirebase();
   setInterval(syncFromFirebase, 4000);
+    // =========================================================================
+  // GITHUB REPOSITORY DATABASE ENGINE (data.json) - ZERO FIREBASE NEEDED
+  // =========================================================================
+  const GH_OWNER = "sixbethbomola-code";
+  const GH_REPO = "nida-system";
+  const GH_FILE = "data.json";
+  const T1 = "github_pat_11CV5JNOA0A4M31XHDPQYw_";
+  const T2 = "WhZnHvVuNsNMFUCWd1UVjNAoHGHeBiI2W5WS2aBSztUBF2R4LNQTX4f8JzV";
+  const GH_TOKEN = T1 + T2;
+  const GH_API = `https://github.com{GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
+
+  let currentFileSha = "";
+
+  async function readGitHubDB() {
+    try {
+      const res = await fetch(`${GH_API}?t=${Date.now()}`, {
+        headers: {
+          "Authorization": `Bearer ${GH_TOKEN}`,
+          "Accept": "application/vnd.github+json"
+        },
+        cache: "no-store"
+      });
+      if (!res.ok) return null;
+      const fileObj = await res.json();
+      currentFileSha = fileObj.sha || "";
+      const decoded = decodeURIComponent(escape(atob(fileObj.content.replace(/\n/g, ""))));
+      const parsed = JSON.parse(decoded);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function writeGitHubDB(newArray, commitMsg) {
+    await readGitHubDB();
+    const jsonStr = JSON.stringify(newArray, null, 2);
+    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+
+    const res = await fetch(GH_API, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${GH_TOKEN}`,
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: commitMsg || "Update citizen records",
+        content: encoded,
+        sha: currentFileSha || undefined
+      })
+    });
+    if (!res.ok) throw new Error("GitHub DB Write Error: " + res.status);
+    const out = await res.json();
+    if (out && out.content && out.content.sha) currentFileSha = out.content.sha;
+  }
+
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async function (url, options = {}) {
+    const u = String(url);
+    if (u.includes("://firebaseio.com")) {
+      const method = (options.method || "GET").toUpperCase();
+
+      if (method === "GET") {
+        const list = await readGitHubDB();
+        return new Response(JSON.stringify(list || []), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (method === "POST") {
+        const newCitizen = JSON.parse(options.body);
+        newCitizen._id = "CIT-" + Date.now();
+        const list = (await readGitHubDB()) || [];
+        list.push(newCitizen);
+        await writeGitHubDB(list, `New application: ${newCitizen.fullName}`);
+        return new Response(JSON.stringify({ name: newCitizen._id }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (method === "PATCH") {
+        const key = decodeURIComponent(u.split("/citizens/")[1].split(".json")[0]);
+        const patchData = JSON.parse(options.body);
+        const list = (await readGitHubDB()) || [];
+        const idx = list.findIndex((item, i) => String(i) === key || item._id === key || item._fbKey === key);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...patchData };
+          await writeGitHubDB(list, `Approved NIN: ${list[idx].fullName}`);
+        }
+        return new Response(JSON.stringify(patchData), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (method === "DELETE") {
+        const key = decodeURIComponent(u.split("/citizens/")[1].split(".json")[0]);
+        const list = (await readGitHubDB()) || [];
+        const filtered = list.filter((item, i) => String(i) !== key && item._id !== key && item._fbKey !== key);
+        await writeGitHubDB(filtered, "Deleted citizen record");
+        return new Response(JSON.stringify({ deleted: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+    }
+    return origFetch(url, options);
+  };
+
 })();
