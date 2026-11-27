@@ -613,4 +613,34 @@
   if (sessionStorage.getItem("officer_logged_in") === "true") setAdminState(true);
   syncFromFirebase();
   setInterval(syncFromFirebase, 4000);
+    // AUTO-COMPRESS PHOTOS SO GITHUB API NEVER FAILS ON LARGE PHONE CAMERA IMAGES
+  const origWriteGitHubDB = writeGitHubDB;
+  writeGitHubDB = async function (newArray, commitMsg) {
+    for (let item of newArray) {
+      if (item.photo && item.photo.length > 150000) {
+        item.photo = await shrinkBase64Image(item.photo, 240, 0.65);
+      }
+      if (item.signature && item.signature.length > 80000) {
+        item.signature = await shrinkBase64Image(item.signature, 220, 0.6);
+      }
+    }
+    return origWriteGitHubDB(newArray, commitMsg);
+  };
+
+  function shrinkBase64Image(dataUrl, maxWidth, quality) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const c = document.createElement("canvas");
+        c.width = img.width * scale;
+        c.height = img.height * scale;
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
 })();
